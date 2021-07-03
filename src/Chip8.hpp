@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -168,6 +169,9 @@ public:
                 pc_reg = stack.top();
                 stack.pop();
                 break;
+            default:
+                assert(("Invalid instruction", false));
+                break;
             }
             break;
         case 0x1:
@@ -231,7 +235,7 @@ public:
                 break;
             case 0x5:
                 // 8xy5 - SUB Vx, Vy
-                general_regs[0xF] = general_regs[x] > general_regs[y] ? 1 : 0;
+                general_regs[0xF] = general_regs[x] >= general_regs[y] ? 1 : 0;
                 general_regs[x] -= general_regs[y];
                 break;
             case 0x6:
@@ -241,13 +245,16 @@ public:
                 break;
             case 0x7:
                 // 8xy7 - SUBN Vx, Vy
-                general_regs[0xF] = general_regs[y] > general_regs[x] ? 1 : 0;
+                general_regs[0xF] = general_regs[y] >= general_regs[x] ? 1 : 0;
                 general_regs[x] = general_regs[y] - general_regs[x];
                 break;
             case 0xE:
                 // 8xyE - SHL Vx {, Vy}
                 general_regs[0xF] = get_bits(general_regs[y], 7, 1);
                 general_regs[x] = general_regs[y] << 1;
+                break;
+            default:
+                assert(("Invalid instruction", false));
                 break;
             }
             break;
@@ -262,7 +269,7 @@ public:
             break;
         case 0xB:
             // Bnnn - JP V0, addr
-            pc_reg = nnn + general_regs[0];
+            pc_reg = nnn + general_regs[0] - 2;
             break;
         case 0xC:
             // Cxkk - RND Vx, byte
@@ -282,6 +289,9 @@ public:
             case 0xA1:
                 // ExA1 - SKNP Vx
                 // TODO: Skip next instruction if key with the value of Vx is not pressed.
+                break;
+            default:
+                assert(("Invalid instruction", false));
                 break;
             }
             break;
@@ -328,7 +338,13 @@ public:
                 std::copy(memory.begin() + addr_reg, memory.begin() + addr_reg + x + 1, general_regs.begin());
                 addr_reg += x + 1;
                 break;
+            default:
+                assert(("Invalid instruction", false));
+                break;
             }
+            break;
+        default:
+            assert(("Invalid instruction", false));
             break;
         }
 
