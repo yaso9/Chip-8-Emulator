@@ -17,27 +17,31 @@ class Chip8 : public sf::Drawable
 {
 private:
     // Registers
-    std::array<reg_t, 0xF> general_regs;
-    addr_t addr_reg;
-    reg_t delay_reg;
-    reg_t sound_reg;
-    addr_t pc_reg;
+    std::array<reg_t, 0xF> general_regs{};
+    addr_t addr_reg = 0;
+    reg_t delay_reg = 0;
+    reg_t sound_reg = 0;
+    addr_t pc_reg = 0x200;
 
     // On the Chip 8, the stack is only used to store return addresses on function calls
     // The program is unable to interact with the stack pointer aside from pushing the
     // return address when calling a function and popping on return
     // Instead of placing a stack in emulator memory and having a stack pointer register,
     // a stack outside of program memory can safely be used
-    std::stack<addr_t> stack;
+    std::stack<addr_t> stack{};
 
     // Memory
-    std::array<byte, 0xFFF> memory;
+    std::array<byte, 0xFFF> memory{};
+
+    // The delay and sound registers, when non-zero, decrement at 50 hertz
+    // This behavior is approximated by decrementing the registers at a set interval of clocks
+    uint8_t clocks_since_timer_decrement;
 
     // A texture for the pixels drawn on the screen
     sf::Texture pixel_texture;
 
     // A linked list of all the sprites currently on screen, for collision detection
-    std::list<sf::Sprite> sprites;
+    std::list<sf::Sprite> sprites{};
 
     // Get the n bits of value after the first offset bits
     template <typename Type>
@@ -94,10 +98,11 @@ public:
     static constexpr const size_t SCREEN_HEIGHT = 32;
     static constexpr const size_t PIXEL_SIZE = 10;
     static const sf::Time TIME_BETWEEN_CLOCKS;
+    static constexpr const uint8_t CLOCKS_BETWEEN_TIMER_DECREMENT = 10;
 
     // 0 out all the registers except for the program counter
     // The program is loaded in memory at 0x200
-    Chip8(std::unique_ptr<byte[]> &program, size_t program_size) : memory{}, general_regs{}, addr_reg(0), delay_reg(0), sound_reg(0), pc_reg(0x200), stack(), sprites()
+    Chip8(std::unique_ptr<byte[]> &program, size_t program_size)
     {
         // Copy the font to the beginning of memory
         std::copy(font.begin(), font.end(), memory.begin());
@@ -118,6 +123,22 @@ public:
     // Execute a clock of the Chip 8
     constexpr void clock()
     {
+        // Decrement the timer if there have been enough clocks since the last time it was decremented
+        if (clocks_since_timer_decrement >= CLOCKS_BETWEEN_TIMER_DECREMENT)
+        {
+            if (delay_reg > 0)
+                delay_reg -= 1;
+
+            if (sound_reg > 0)
+                sound_reg -= 1;
+
+            clocks_since_timer_decrement = 0;
+        }
+        else
+        {
+            clocks_since_timer_decrement += 1;
+        }
+
         // Get the instruction
         const inst_t instruction = (memory[pc_reg] << 8) + memory[pc_reg + 1];
 
