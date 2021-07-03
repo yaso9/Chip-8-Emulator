@@ -1,11 +1,11 @@
 #include <chrono>
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <thread>
 #include <SFML/Graphics.hpp>
 
 #include "./Chip8.hpp"
+#include "./Keypad.hpp"
 
 int main(int argc, char **argv)
 {
@@ -17,9 +17,10 @@ int main(int argc, char **argv)
     program_stream.seekg(0, std::ios::beg);
     program_stream.read(reinterpret_cast<char *>(program.get()), program_size);
 
-    sf::RenderWindow window(sf::VideoMode(Chip8::SCREEN_WIDTH * Chip8::PIXEL_SIZE, Chip8::SCREEN_HEIGHT * Chip8::PIXEL_SIZE), "Chip 8 Emulator", sf::Style::Default ^ sf::Style::Resize);
+    sf::RenderWindow window(sf::VideoMode(Chip8::SCREEN_WIDTH * Chip8::PIXEL_SIZE, Chip8::SCREEN_HEIGHT * Chip8::PIXEL_SIZE + Keypad::KEYPAD_SIZE), "Chip 8 Emulator", sf::Style::Default ^ sf::Style::Resize);
 
-    Chip8 chip8(program, program_size);
+    std::shared_ptr<Keypad> keypad = std::make_shared<Keypad>();
+    Chip8 chip8(program, program_size, keypad);
     sf::Sprite display;
     sf::Clock timer;
     while (window.isOpen())
@@ -27,8 +28,16 @@ int main(int argc, char **argv)
         sf::Event event;
         while (window.pollEvent(event))
         {
-            if (event.type == sf::Event::Closed)
+            switch (event.type)
+            {
+            case sf::Event::Closed:
                 window.close();
+                break;
+            case sf::Event::KeyPressed:
+            case sf::Event::KeyReleased:
+                keypad->handle_key_event(event);
+                break;
+            }
         }
 
         // Clock the CPU
@@ -37,6 +46,7 @@ int main(int argc, char **argv)
         // Draw the window
         window.clear(sf::Color::Black);
         window.draw(chip8);
+        window.draw(*keypad);
         window.display();
 
         // Wait until the next clock

@@ -11,6 +11,7 @@
 #include <stack>
 #include <SFML/Graphics.hpp>
 
+#include "./Keypad.hpp"
 #include "./types.hpp"
 #include "./font.hpp"
 
@@ -37,6 +38,9 @@ private:
     // The delay and sound registers, when non-zero, decrement at 50 hertz
     // This behavior is approximated by decrementing the registers at a set interval of clocks
     uint8_t clocks_since_timer_decrement;
+
+    // The keypad to get input from
+    const std::shared_ptr<Keypad> keypad;
 
     // A texture for the pixels drawn on the screen
     sf::Texture pixel_texture;
@@ -103,7 +107,7 @@ public:
 
     // 0 out all the registers except for the program counter
     // The program is loaded in memory at 0x200
-    Chip8(std::unique_ptr<byte[]> &program, size_t program_size)
+    Chip8(std::unique_ptr<byte[]> &program, size_t program_size, std::shared_ptr<Keypad> keypad) : keypad(keypad)
     {
         // Copy the font to the beginning of memory
         std::copy(font.begin(), font.end(), memory.begin());
@@ -284,11 +288,13 @@ public:
             {
             case 0x9E:
                 // Ex9E - SKP Vx
-                // TODO: Skip next instruction if key with the value of Vx is pressed.
+                if (keypad->is_key_down(general_regs[x]))
+                    pc_reg += 2;
                 break;
             case 0xA1:
                 // ExA1 - SKNP Vx
-                // TODO: Skip next instruction if key with the value of Vx is not pressed.
+                if (!keypad->is_key_down(general_regs[x]))
+                    pc_reg += 2;
                 break;
             default:
                 assert(("Invalid instruction", false));
