@@ -5,12 +5,14 @@
 #include <SFML/Graphics.hpp>
 
 #include "./Key.hpp"
+#include "./KeyPressHandler.hpp"
 
 class Keypad : public sf::Drawable
 {
 private:
     std::array<Key, 16> keys;
     std::shared_ptr<sf::Font> font;
+    std::vector<std::shared_ptr<KeyPressHandler>> handlers;
 
 public:
     // Some constants
@@ -27,6 +29,11 @@ public:
         {
             keys[KEY_DRAW_ORDER[idx]] = Key(font, KEY_CHARACTER[KEY_DRAW_ORDER[idx]], Key::KEY_SIZE * (idx % 4), Key::KEY_SIZE * (idx / 4) + 320);
         }
+    }
+
+    void add_key_press_handler(std::shared_ptr<KeyPressHandler> handler)
+    {
+        handlers.push_back(handler);
     }
 
     constexpr void handle_key_event(sf::Event event)
@@ -47,6 +54,12 @@ public:
         case sf::Event::KeyReleased:
             keys[key].set_down(false);
             break;
+        }
+
+        // Notify the handlers
+        for (const std::shared_ptr<KeyPressHandler> &handler : handlers)
+        {
+            handler->handle_key_press(key);
         }
     }
 

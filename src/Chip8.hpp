@@ -4,19 +4,30 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <stack>
 #include <SFML/Graphics.hpp>
 
-#include "./Keypad.hpp"
 #include "./types.hpp"
 #include "./font.hpp"
+#include "./Keypad.hpp"
+#include "./KeyPressHandler.hpp"
 
-class Chip8 : public sf::Drawable
+class Chip8 : public sf::Drawable, public KeyPressHandler
 {
+public:
+    // Some constants
+    static constexpr const size_t SCREEN_WIDTH = 64;
+    static constexpr const size_t SCREEN_HEIGHT = 32;
+    static constexpr const size_t PIXEL_SIZE = 10;
+    static const sf::Time TIME_BETWEEN_CLOCKS;
+    static constexpr const uint8_t CLOCKS_BETWEEN_TIMER_DECREMENT = 10;
+
 private:
     // Registers
     std::array<reg_t, 0xF> general_regs{};
@@ -45,8 +56,16 @@ private:
     // A texture for the pixels drawn on the screen
     sf::Texture pixel_texture;
 
-    // A linked list of all the sprites currently on screen, for collision detection
+    // A linked list of sprites on the screen
     std::list<sf::Sprite> sprites{};
+
+    // This mutex is used to make sure a sprite isn't being drawn while the screen is being updated
+    mutable std::mutex sprites_mutex;
+
+    // These are used to handle waiting until a key is pressed for the Fx0A instruction
+    std::mutex key_press_mtx;
+    std::condition_variable key_press_cv;
+    uint8_t key_pressed;
 
     // Get the n bits of value after the first offset bits
     template <typename Type>
@@ -59,12 +78,9 @@ private:
     // Returns true if there was a collision
     bool drawSprite(addr_t sprite_addr, uint8_t x, uint8_t y, uint8_t n)
     {
-        // Chip 8 sprites are n bytes long
-        // Each byte is a row
-        // Each bit represents a pixel
-        // We use a SFML sprite to represent each Chip 8 pixel
-
+        std::unique_lock<std::mutex> lock(sprites_mutex);
         bool intersect = false;
+
         for (addr_t i = sprite_addr; i < sprite_addr + n; i++)
         {
             for (uint8_t bit = 0; bit < 8; bit++)
@@ -98,13 +114,6 @@ private:
     }
 
 public:
-    // Some constants
-    static constexpr const size_t SCREEN_WIDTH = 64;
-    static constexpr const size_t SCREEN_HEIGHT = 32;
-    static constexpr const size_t PIXEL_SIZE = 10;
-    static const sf::Time TIME_BETWEEN_CLOCKS;
-    static constexpr const uint8_t CLOCKS_BETWEEN_TIMER_DECREMENT = 10;
-
     // 0 out all the registers except for the program counter
     // The program is loaded in memory at 0x200
     Chip8(std::unique_ptr<byte[]> &program, size_t program_size, std::shared_ptr<Keypad> keypad) : keypad(keypad)
@@ -125,8 +134,15 @@ public:
         pixel_texture = pixel_render.getTexture();
     }
 
+    virtual void handle_key_press(uint8_t key)
+    {
+        std::unique_lock<std::mutex> lock(key_press_mtx);
+        key_pressed = key;
+        key_press_cv.notify_all();
+    }
+
     // Execute a clock of the Chip 8
-    constexpr void clock()
+    void clock()
     {
         // Decrement the timer if there have been enough clocks since the last time it was decremented
         if (clocks_since_timer_decrement >= CLOCKS_BETWEEN_TIMER_DECREMENT)
@@ -310,7 +326,13 @@ public:
                 break;
             case 0x0A:
                 // Fx0A - LD Vx, K
-                // TODO:  Wait for a key press, store the value of the key in Vx.
+                {
+                    key_pressed = 0;
+                    std::unique_lock<std::mutex> lock(key_press_mtx);
+                    while (key_pressed == 0)
+                        key_press_cv.wait(lock);
+                    general_regs[x] = key_pressed;
+                }
                 break;
             case 0x15:
                 // Fx15 - LD DT, Vx
@@ -360,6 +382,7 @@ public:
 
     virtual void draw(sf::RenderTarget &target, sf::RenderStates states) const
     {
+        std::unique_lock<std::mutex> lock(sprites_mutex);
         for (const sf::Sprite &sprite : sprites)
         {
             target.draw(sprite);

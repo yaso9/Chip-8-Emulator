@@ -20,41 +20,58 @@ int main(int argc, char **argv)
     sf::RenderWindow window(sf::VideoMode(Chip8::SCREEN_WIDTH * Chip8::PIXEL_SIZE, Chip8::SCREEN_HEIGHT * Chip8::PIXEL_SIZE + Keypad::KEYPAD_SIZE), "Chip 8 Emulator", sf::Style::Default ^ sf::Style::Resize);
 
     std::shared_ptr<Keypad> keypad = std::make_shared<Keypad>();
-    Chip8 chip8(program, program_size, keypad);
-    sf::Sprite display;
-    sf::Clock timer;
-    while (window.isOpen())
-    {
-        sf::Event event;
-        while (window.pollEvent(event))
-        {
-            switch (event.type)
-            {
-            case sf::Event::Closed:
-                window.close();
-                break;
-            case sf::Event::KeyPressed:
-            case sf::Event::KeyReleased:
-                keypad->handle_key_event(event);
-                break;
-            }
-        }
+    std::shared_ptr<Chip8> chip8 = std::make_shared<Chip8>(program, program_size, keypad);
+    keypad->add_key_press_handler(chip8);
 
-        // Clock the CPU
-        chip8.clock();
+    // Create a thread to handle clocks
+    std::thread clock_thread([&]
+                             {
+                                 sf::Clock timer;
+                                 while (window.isOpen())
+                                 {
+                                     // Clock the CPU
+                                     chip8->clock();
 
-        // Draw the window
-        window.clear(sf::Color::Black);
-        window.draw(chip8);
-        window.draw(*keypad);
-        window.display();
+                                     // Wait until the next clock
+                                     std::this_thread::sleep_for(
+                                         std::chrono::microseconds(
+                                             (Chip8::TIME_BETWEEN_CLOCKS - timer.getElapsedTime()).asMicroseconds()));
+                                     timer.restart();
+                                 }
+                             });
 
-        // Wait until the next clock
-        std::this_thread::sleep_for(
-            std::chrono::microseconds(
-                (Chip8::TIME_BETWEEN_CLOCKS - timer.getElapsedTime()).asMicroseconds()));
-        timer.restart();
-    }
+    // Create a thread to handle drawing the window and handling events
+    window.setActive(false);
+    std::thread window_thread([&]
+                              {
+                                  window.setActive(true);
+                                  while (window.isOpen())
+                                  {
+                                      sf::Event event;
+                                      while (window.pollEvent(event))
+                                      {
+                                          switch (event.type)
+                                          {
+                                          case sf::Event::Closed:
+                                              window.close();
+                                              break;
+                                          case sf::Event::KeyPressed:
+                                          case sf::Event::KeyReleased:
+                                              keypad->handle_key_event(event);
+                                              break;
+                                          }
+                                      }
+
+                                      // Draw the window
+                                      window.clear(sf::Color::Black);
+                                      window.draw(*chip8);
+                                      window.draw(*keypad);
+                                      window.display();
+                                  }
+                              });
+
+    clock_thread.join();
+    window_thread.join();
 
     return 0;
 }
