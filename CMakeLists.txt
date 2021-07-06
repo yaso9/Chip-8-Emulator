@@ -22,16 +22,19 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/eliasdaler/imgui-sfml.git
   GIT_TAG        v2.3
 )
+FetchContent_Declare(
+  imgui_club
+  GIT_REPOSITORY https://github.com/ocornut/imgui_club.git
+  GIT_TAG        02e679b7f4cfb01f9480dcbcac59552879f96573
+)
 
-FetchContent_Populate(SFML)
-FetchContent_Populate(imgui)
-FetchContent_Populate(imgui-sfml)
-
-add_subdirectory(${sfml_SOURCE_DIR} ${sfml_BINARY_DIR} EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(SFML)
+FetchContent_MakeAvailable(imgui)
 set(IMGUI_DIR ${imgui_SOURCE_DIR})
-set(IMGUI_SFML_FIND_SFML CACHE BOOL OFF)
-set(IMGUI_SFML_IMGUI_DEMO CACHE BOOL ON)
-add_subdirectory(${imgui-sfml_SOURCE_DIR} ${imgui-sfml_BINARY_DIR} EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(imgui-sfml)
+
+FetchContent_Populate(imgui_club)
+include_directories(${imgui_club_SOURCE_DIR})
 
 find_package(Threads REQUIRED)
 find_package(CURL REQUIRED) 

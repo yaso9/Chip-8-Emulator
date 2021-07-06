@@ -15,9 +15,11 @@
 
 #include "./types.hpp"
 #include "./font.hpp"
+#include "./Registers.hpp"
 #include "./Keypad.hpp"
 #include "./KeyPressHandler.hpp"
 #include "./Program.hpp"
+#include "./Debugger.hpp"
 
 class Chip8 : public sf::Drawable, public KeyPressHandler
 {
@@ -31,11 +33,7 @@ public:
 
 private:
     // Registers
-    std::array<reg_t, 0xF> general_regs{};
-    addr_t addr_reg = 0;
-    reg_t delay_reg = 0;
-    reg_t sound_reg = 0;
-    addr_t pc_reg = 0x200;
+    std::shared_ptr<Registers> registers = std::make_shared<Registers>();
 
     // On the Chip 8, the stack is only used to store return addresses on function calls
     // The program is unable to interact with the stack pointer aside from pushing the
@@ -45,7 +43,7 @@ private:
     std::stack<addr_t> stack{};
 
     // Memory
-    std::array<byte, 0xFFF> memory{};
+    std::shared_ptr<std::array<byte, 0xFFF>> memory = std::make_shared<std::array<byte, 0xFFF>>();
 
     // The delay and sound registers, when non-zero, decrement at 50 hertz
     // This behavior is approximated by decrementing the registers at a set interval of clocks
@@ -68,6 +66,9 @@ private:
     std::condition_variable key_press_cv;
     uint8_t key_pressed;
 
+    // This handles debugging
+    std::shared_ptr<Debugger> debugger;
+
     // Get the n bits of value after the first offset bits
     template <typename Type>
     [[nodiscard]] static constexpr inline Type get_bits(Type value, size_t offset, size_t n)
@@ -86,7 +87,7 @@ private:
         {
             for (uint8_t bit = 0; bit < 8; bit++)
             {
-                if (get_bits(memory[i], 7 - bit, 1) == 1)
+                if (get_bits((*memory)[i], 7 - bit, 1) == 1)
                 {
                     sf::Sprite pixel(pixel_texture);
                     pixel.setPosition(sf::Vector2f((x + bit) * PIXEL_SIZE, (y + i - sprite_addr) * PIXEL_SIZE));
@@ -119,7 +120,7 @@ public:
     Chip8(std::shared_ptr<Keypad> keypad) : keypad(keypad)
     {
         // Copy the font to the beginning of memory
-        std::copy(font.begin(), font.end(), memory.begin());
+        std::copy(font.begin(), font.end(), memory->begin());
 
         // Create and initialize the pixel_texture
         sf::RenderTexture pixel_render;
@@ -131,11 +132,17 @@ public:
         pixel_texture = pixel_render.getTexture();
     }
 
+    void attach_debugger(std::shared_ptr<Debugger> &debugger)
+    {
+        this->debugger = debugger;
+        debugger->attach(memory, registers);
+    }
+
     void load_program(Program *program)
     {
         // Download the program and copy it into memory starting at 0x200
         program->get_program();
-        std::copy(program->program.begin(), program->program.end(), memory.begin() + 0x200);
+        std::copy(program->program.begin(), program->program.end(), memory->begin() + 0x200);
     }
 
     virtual void handle_key_press(uint8_t key)
@@ -148,14 +155,17 @@ public:
     // Execute a clock of the Chip 8
     void clock()
     {
+        if (debugger)
+            debugger->on_clock();
+
         // Decrement the timer if there have been enough clocks since the last time it was decremented
         if (clocks_since_timer_decrement >= CLOCKS_BETWEEN_TIMER_DECREMENT)
         {
-            if (delay_reg > 0)
-                delay_reg -= 1;
+            if (registers->delay_reg > 0)
+                registers->delay_reg -= 1;
 
-            if (sound_reg > 0)
-                sound_reg -= 1;
+            if (registers->sound_reg > 0)
+                registers->sound_reg -= 1;
 
             clocks_since_timer_decrement = 0;
         }
@@ -165,7 +175,7 @@ public:
         }
 
         // Get the instruction
-        const inst_t instruction = (memory[pc_reg] << 8) + memory[pc_reg + 1];
+        const inst_t instruction = ((*memory)[registers->pc_reg] << 8) + (*memory)[registers->pc_reg + 1];
 
         // nnn - A 12-bit value, the lowest 12 bits of the instruction
         const addr_t nnn = get_bits(instruction, 0, 12);
@@ -190,7 +200,7 @@ public:
                 break;
             case 0x0EE:
                 // 00EE - RET
-                pc_reg = stack.top();
+                registers->pc_reg = stack.top();
                 stack.pop();
                 break;
             default:
@@ -200,82 +210,82 @@ public:
             break;
         case 0x1:
             // 1nnn - JP addr
-            pc_reg = nnn - 2;
+            registers->pc_reg = nnn - 2;
             break;
         case 0x2:
             // 2nnn - CALL addr
-            stack.push(pc_reg);
-            pc_reg = nnn;
+            stack.push(registers->pc_reg);
+            registers->pc_reg = nnn;
             break;
         case 0x3:
             // 3xkk - SE Vx, byte
-            if (general_regs[x] == kk)
-                pc_reg += 2;
+            if (registers->general_regs[x] == kk)
+                registers->pc_reg += 2;
             break;
         case 0x4:
             // 4xkk - SNE Vx, byte
-            if (general_regs[x] != kk)
-                pc_reg += 2;
+            if (registers->general_regs[x] != kk)
+                registers->pc_reg += 2;
             break;
         case 0x5:
             // 5xy0 - SE Vx, Vy
-            if (general_regs[x] == general_regs[y])
-                pc_reg += 2;
+            if (registers->general_regs[x] == registers->general_regs[y])
+                registers->pc_reg += 2;
             break;
         case 0x6:
             // 6xkk - LD Vx, byte
-            general_regs[x] = kk;
+            registers->general_regs[x] = kk;
             break;
         case 0x7:
             // 7xkk - ADD Vx, byte
-            general_regs[x] += kk;
+            registers->general_regs[x] += kk;
             break;
         case 0x8:
             switch (n)
             {
             case 0x0:
                 // 8xy0 - LD Vx, Vy
-                general_regs[x] = general_regs[y];
+                registers->general_regs[x] = registers->general_regs[y];
                 break;
             case 0x1:
                 // 8xy1 - OR Vx, Vy
-                general_regs[x] |= general_regs[y];
+                registers->general_regs[x] |= registers->general_regs[y];
                 break;
             case 0x2:
                 // 8xy2 - AND Vx, Vy
-                general_regs[x] &= general_regs[y];
+                registers->general_regs[x] &= registers->general_regs[y];
                 break;
             case 0x3:
                 // 8xy3 - XOR Vx, Vy
-                general_regs[x] ^= general_regs[y];
+                registers->general_regs[x] ^= registers->general_regs[y];
                 break;
             case 0x4:
                 // 8xy4 - ADD Vx, Vy
                 {
-                    const uint16_t sum = static_cast<uint16_t>(general_regs[x]) + static_cast<uint16_t>(general_regs[y]);
-                    general_regs[0xF] = sum > 0xFF ? 1 : 0;
-                    general_regs[x] = sum;
+                    const uint16_t sum = static_cast<uint16_t>(registers->general_regs[x]) + static_cast<uint16_t>(registers->general_regs[y]);
+                    registers->general_regs[0xF] = sum > 0xFF ? 1 : 0;
+                    registers->general_regs[x] = sum;
                 }
                 break;
             case 0x5:
                 // 8xy5 - SUB Vx, Vy
-                general_regs[0xF] = general_regs[x] >= general_regs[y] ? 1 : 0;
-                general_regs[x] -= general_regs[y];
+                registers->general_regs[0xF] = registers->general_regs[x] >= registers->general_regs[y] ? 1 : 0;
+                registers->general_regs[x] -= registers->general_regs[y];
                 break;
             case 0x6:
                 // 8xy6 - SHR Vx {, Vy}
-                general_regs[0xF] = get_bits(general_regs[y], 0, 1);
-                general_regs[x] = general_regs[y] >> 1;
+                registers->general_regs[0xF] = get_bits(registers->general_regs[y], 0, 1);
+                registers->general_regs[x] = registers->general_regs[y] >> 1;
                 break;
             case 0x7:
                 // 8xy7 - SUBN Vx, Vy
-                general_regs[0xF] = general_regs[y] >= general_regs[x] ? 1 : 0;
-                general_regs[x] = general_regs[y] - general_regs[x];
+                registers->general_regs[0xF] = registers->general_regs[y] >= registers->general_regs[x] ? 1 : 0;
+                registers->general_regs[x] = registers->general_regs[y] - registers->general_regs[x];
                 break;
             case 0xE:
                 // 8xyE - SHL Vx {, Vy}
-                general_regs[0xF] = get_bits(general_regs[y], 7, 1);
-                general_regs[x] = general_regs[y] << 1;
+                registers->general_regs[0xF] = get_bits(registers->general_regs[y], 7, 1);
+                registers->general_regs[x] = registers->general_regs[y] << 1;
                 break;
             default:
                 assert(("Invalid instruction", false));
@@ -284,37 +294,37 @@ public:
             break;
         case 0x9:
             // 9xy0 - SNE Vx, Vy
-            if (general_regs[x] != general_regs[y])
-                pc_reg += 2;
+            if (registers->general_regs[x] != registers->general_regs[y])
+                registers->pc_reg += 2;
             break;
         case 0xA:
             // Annn - LD I, addr
-            addr_reg = nnn;
+            registers->addr_reg = nnn;
             break;
         case 0xB:
             // Bnnn - JP V0, addr
-            pc_reg = nnn + general_regs[0] - 2;
+            registers->pc_reg = nnn + registers->general_regs[0] - 2;
             break;
         case 0xC:
             // Cxkk - RND Vx, byte
-            general_regs[x] = (std::rand() % 0x100) & kk;
+            registers->general_regs[x] = (std::rand() % 0x100) & kk;
             break;
         case 0xD:
             // Dxyn - DRW Vx, Vy, nibble
-            general_regs[0xF] = drawSprite(addr_reg, general_regs[x], general_regs[y], n) ? 1 : 0;
+            registers->general_regs[0xF] = drawSprite(registers->addr_reg, registers->general_regs[x], registers->general_regs[y], n) ? 1 : 0;
             break;
         case 0xE:
             switch (kk)
             {
             case 0x9E:
                 // Ex9E - SKP Vx
-                if (keypad->is_key_down(general_regs[x]))
-                    pc_reg += 2;
+                if (keypad->is_key_down(registers->general_regs[x]))
+                    registers->pc_reg += 2;
                 break;
             case 0xA1:
                 // ExA1 - SKNP Vx
-                if (!keypad->is_key_down(general_regs[x]))
-                    pc_reg += 2;
+                if (!keypad->is_key_down(registers->general_regs[x]))
+                    registers->pc_reg += 2;
                 break;
             default:
                 assert(("Invalid instruction", false));
@@ -326,7 +336,7 @@ public:
             {
             case 0x07:
                 // Fx07 - LD Vx, DT
-                general_regs[x] = delay_reg;
+                registers->general_regs[x] = registers->delay_reg;
                 break;
             case 0x0A:
                 // Fx0A - LD Vx, K
@@ -335,40 +345,40 @@ public:
                     std::unique_lock<std::mutex> lock(key_press_mtx);
                     while (key_pressed == 0)
                         key_press_cv.wait(lock);
-                    general_regs[x] = key_pressed;
+                    registers->general_regs[x] = key_pressed;
                 }
                 break;
             case 0x15:
                 // Fx15 - LD DT, Vx
-                delay_reg = general_regs[x];
+                registers->delay_reg = registers->general_regs[x];
                 break;
             case 0x18:
                 // Fx18 - LD ST, Vx
-                sound_reg = general_regs[x];
+                registers->sound_reg = registers->general_regs[x];
                 break;
             case 0x1E:
                 // Fx1E - ADD I, Vx
-                addr_reg += general_regs[x];
+                registers->addr_reg += registers->general_regs[x];
                 break;
             case 0x29:
                 // Fx29 - LD F, Vx
-                addr_reg = general_regs[x] * 5;
+                registers->addr_reg = registers->general_regs[x] * 5;
                 break;
             case 0x33:
                 // Fx33 - LD B, Vx
-                memory[addr_reg] = general_regs[x] / 100;
-                memory[addr_reg + 1] = (general_regs[x] / 10) % 10;
-                memory[addr_reg + 2] = general_regs[x] % 10;
+                (*memory)[registers->addr_reg] = registers->general_regs[x] / 100;
+                (*memory)[registers->addr_reg + 1] = (registers->general_regs[x] / 10) % 10;
+                (*memory)[registers->addr_reg + 2] = registers->general_regs[x] % 10;
                 break;
             case 0x55:
                 // Fx55 - LD [I], Vx
-                std::copy(general_regs.begin(), general_regs.begin() + x + 1, memory.begin() + addr_reg);
-                addr_reg += x + 1;
+                std::copy(registers->general_regs.begin(), registers->general_regs.begin() + x + 1, memory->begin() + registers->addr_reg);
+                registers->addr_reg += x + 1;
                 break;
             case 0x65:
                 // Fx65 - LD Vx, [I]
-                std::copy(memory.begin() + addr_reg, memory.begin() + addr_reg + x + 1, general_regs.begin());
-                addr_reg += x + 1;
+                std::copy(memory->begin() + registers->addr_reg, memory->begin() + registers->addr_reg + x + 1, registers->general_regs.begin());
+                registers->addr_reg += x + 1;
                 break;
             default:
                 assert(("Invalid instruction", false));
@@ -381,7 +391,7 @@ public:
         }
 
         // Increment the program counter
-        pc_reg += 2;
+        registers->pc_reg += 2;
     }
 
     virtual void draw(sf::RenderTarget &target, sf::RenderStates states) const
