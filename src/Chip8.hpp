@@ -17,6 +17,7 @@
 #include "./font.hpp"
 #include "./Keypad.hpp"
 #include "./KeyPressHandler.hpp"
+#include "./Program.hpp"
 
 class Chip8 : public sf::Drawable, public KeyPressHandler
 {
@@ -115,14 +116,10 @@ private:
 
 public:
     // 0 out all the registers except for the program counter
-    // The program is loaded in memory at 0x200
-    Chip8(std::unique_ptr<byte[]> &program, size_t program_size, std::shared_ptr<Keypad> keypad) : keypad(keypad)
+    Chip8(std::shared_ptr<Keypad> keypad) : keypad(keypad)
     {
         // Copy the font to the beginning of memory
         std::copy(font.begin(), font.end(), memory.begin());
-
-        // Copy the program to 0x200
-        std::copy(program.get(), program.get() + program_size, memory.begin() + 0x200);
 
         // Create and initialize the pixel_texture
         sf::RenderTexture pixel_render;
@@ -132,6 +129,13 @@ public:
         pixel_shape.setFillColor(sf::Color::White);
         pixel_render.draw(pixel_shape);
         pixel_texture = pixel_render.getTexture();
+    }
+
+    void load_program(Program *program)
+    {
+        // Download the program and copy it into memory starting at 0x200
+        program->get_program();
+        std::copy(program->program.begin(), program->program.end(), memory.begin() + 0x200);
     }
 
     virtual void handle_key_press(uint8_t key)
