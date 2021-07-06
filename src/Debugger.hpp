@@ -16,6 +16,37 @@ private:
 
     MemoryEditor memory_editor;
 
+    void draw_registers()
+    {
+        if (ImGui::CollapsingHeader("Registers", ImGuiTreeNodeFlags_DefaultOpen) && ImGui::BeginTable("registers", 5))
+        {
+            // Display the general registers
+            for (uint8_t i = 0; i <= 0xF; i++)
+            {
+                ImGui::TableNextColumn();
+                ImGui::Text("R%X: 0x%02X", i, registers->general_regs[i]);
+            }
+
+            // Display the address register
+            ImGui::TableNextColumn();
+            ImGui::Text("I: 0x%03X", registers->addr_reg);
+
+            // Display the delay register
+            ImGui::TableNextColumn();
+            ImGui::Text("DT: 0x%02X", registers->delay_reg);
+
+            // Display the sound register
+            ImGui::TableNextColumn();
+            ImGui::Text("ST: 0x%02X", registers->sound_reg);
+
+            // Display the program counter
+            ImGui::TableNextColumn();
+            ImGui::Text("PC: 0x%03X", registers->pc_reg);
+
+            ImGui::EndTable();
+        }
+    }
+
 public:
     void attach(std::shared_ptr<std::array<byte, 0xFFF>> memory, std::shared_ptr<Registers> registers)
     {
@@ -31,51 +62,7 @@ public:
     {
         ImGui::Begin("Debugger");
 
-        if (ImGui::CollapsingHeader("Registers", ImGuiTreeNodeFlags_DefaultOpen) && ImGui::BeginTable("registers", 5))
-        {
-            std::ostringstream stream;
-            std::string text;
-
-            // Display the general registers
-            for (uint8_t i = 0; i <= 0xF; i++)
-            {
-                ImGui::TableNextColumn();
-                stream = std::ostringstream();
-                stream << "R" << std::uppercase << std::hex << static_cast<int>(i) << ": 0x" << static_cast<int>(registers->general_regs[i]);
-                text = stream.str();
-                ImGui::Text(text.c_str());
-            }
-
-            // Diplay the address register
-            ImGui::TableNextColumn();
-            stream = std::ostringstream();
-            stream << std::uppercase << std::hex << "I: 0x" << static_cast<int>(registers->addr_reg);
-            text = stream.str();
-            ImGui::Text(text.c_str());
-
-            // Diplay the delay register
-            ImGui::TableNextColumn();
-            stream = std::ostringstream();
-            stream << std::uppercase << std::hex << "DT: 0x" << static_cast<int>(registers->delay_reg);
-            text = stream.str();
-            ImGui::Text(text.c_str());
-
-            // Diplay the sound register
-            ImGui::TableNextColumn();
-            stream = std::ostringstream();
-            stream << std::uppercase << std::hex << "ST: 0x" << static_cast<int>(registers->sound_reg);
-            text = stream.str();
-            ImGui::Text(text.c_str());
-
-            // Diplay the program counter
-            ImGui::TableNextColumn();
-            stream = std::ostringstream();
-            stream << std::uppercase << std::hex << "PC: 0x" << static_cast<int>(registers->pc_reg);
-            text = stream.str();
-            ImGui::Text(text.c_str());
-
-            ImGui::EndTable();
-        }
+        draw_registers();
 
         if (ImGui::CollapsingHeader("Memory", ImGuiTreeNodeFlags_DefaultOpen))
             memory_editor.DrawContents(memory.get(), memory->size());
