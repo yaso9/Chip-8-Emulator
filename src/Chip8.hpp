@@ -13,6 +13,7 @@
 #include <stack>
 #include <SFML/Graphics.hpp>
 
+#include "./get_bits.hpp"
 #include "./types.hpp"
 #include "./font.hpp"
 #include "./Registers.hpp"
@@ -43,7 +44,7 @@ private:
     std::stack<addr_t> stack{};
 
     // Memory
-    std::shared_ptr<std::array<byte, 0xFFF>> memory = std::make_shared<std::array<byte, 0xFFF>>();
+    std::shared_ptr<std::array<byte, 0x1000>> memory = std::make_shared<std::array<byte, 0x1000>>();
 
     // The delay and sound registers, when non-zero, decrement at 50 hertz
     // This behavior is approximated by decrementing the registers at a set interval of clocks
@@ -68,13 +69,6 @@ private:
 
     // This handles debugging
     std::shared_ptr<Debugger> debugger;
-
-    // Get the n bits of value after the first offset bits
-    template <typename Type>
-    [[nodiscard]] static constexpr inline Type get_bits(Type value, size_t offset, size_t n)
-    {
-        return (value >> offset) & (Type)(pow(2, n) - 1);
-    }
 
     // Draw a chip8 sprite on the display
     // Returns true if there was a collision
