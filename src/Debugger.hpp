@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 
@@ -16,6 +17,53 @@ private:
 
     MemoryEditor memory_editor;
 
+    void *editing_reg;
+
+    template <uint8_t Digits>
+    constexpr const std::string get_register_format() const
+    {
+        std::ostringstream stream;
+        stream << "%0" << static_cast<int>(Digits) << "X";
+        std::string str = stream.str();
+        return str;
+    }
+
+    template <uint8_t Digits, typename Type>
+    void draw_hex_input(const char *label, Type *data) const
+    {
+        static const std::string format = get_register_format<Digits>();
+
+        char buf[Digits + 1];
+        snprintf(buf, Digits + 1, format.c_str(), *data);
+
+        if (ImGui::InputText(label, buf, Digits + 1, ImGuiInputTextFlags_CharsHexadecimal))
+        {
+            sscanf(buf, format.c_str(), data);
+        }
+    }
+
+    template <uint8_t Digits, typename Type>
+    void draw_register(std::string name, Type *reg)
+    {
+        static const std::string format = get_register_format<Digits>();
+
+        ImGui::TableNextColumn();
+        ImGui::Text("%s: ", name.c_str());
+        ImGui::SameLine();
+        if (editing_reg != reg)
+            ImGui::Text(format.c_str(), (int)*reg);
+        else
+        {
+            draw_hex_input<Digits, Type>(("##" + name).c_str(), static_cast<Type *>(editing_reg));
+        }
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            if (ImGui::IsItemHovered())
+                editing_reg = reg;
+            else if (editing_reg == reg)
+                editing_reg = nullptr;
+    }
+
     void draw_registers()
     {
         if (ImGui::CollapsingHeader("Registers", ImGuiTreeNodeFlags_DefaultOpen) && ImGui::BeginTable("registers", 5))
@@ -23,25 +71,15 @@ private:
             // Display the general registers
             for (uint8_t i = 0; i <= 0xF; i++)
             {
-                ImGui::TableNextColumn();
-                ImGui::Text("R%X: 0x%02X", i, registers->general_regs[i]);
+                std::ostringstream stream;
+                stream << 'R' << std::hex << std::uppercase << static_cast<int>(i);
+                draw_register<2>(stream.str().c_str(), &registers->general_regs[i]);
             }
 
-            // Display the address register
-            ImGui::TableNextColumn();
-            ImGui::Text("I: 0x%03X", registers->addr_reg);
-
-            // Display the delay register
-            ImGui::TableNextColumn();
-            ImGui::Text("DT: 0x%02X", registers->delay_reg);
-
-            // Display the sound register
-            ImGui::TableNextColumn();
-            ImGui::Text("ST: 0x%02X", registers->sound_reg);
-
-            // Display the program counter
-            ImGui::TableNextColumn();
-            ImGui::Text("PC: 0x%03X", registers->pc_reg);
+            draw_register<3>("I", &registers->addr_reg);
+            draw_register<2>("DT", &registers->delay_reg);
+            draw_register<2>("ST", &registers->sound_reg);
+            draw_register<3>("PC", &registers->pc_reg);
 
             ImGui::EndTable();
         }
