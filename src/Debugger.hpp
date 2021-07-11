@@ -399,25 +399,30 @@ private:
     {
         if (ImGui::BeginTable("disassembly", 2, ImGuiTableFlags_ScrollY, ImVec2(0, 300)))
         {
-            for (addr_t addr = 0; addr < memory->size(); addr += 2)
+            ImGuiListClipper clipper;
+            clipper.Begin(memory->size() / 2);
+            while (clipper.Step())
             {
-                std::optional<Instruction> instruction = disassemble_instruction((*memory)[addr] << 8 | (*memory)[addr + 1]);
+                for (uint16_t addr = clipper.DisplayStart * 2; addr < clipper.DisplayEnd * 2; addr += 2)
+                {
+                    std::optional<Instruction> instruction = disassemble_instruction((*memory)[addr] << 8 | (*memory)[addr + 1]);
 
-                bool current_instruction = registers->pc_reg == addr;
-                if (current_instruction)
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.27, 0, 1));
+                    bool current_instruction = registers->pc_reg == addr;
+                    if (current_instruction)
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.27, 0, 1));
 
-                ImGui::TableNextColumn();
-                ImGui::Text("%03X", addr);
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%03X", addr);
 
-                ImGui::TableNextColumn();
-                if (instruction)
-                    ImGui::Text("%s", static_cast<std::string>(*instruction).c_str());
-                else
-                    ImGui::Text("????");
+                    ImGui::TableNextColumn();
+                    if (instruction)
+                        ImGui::Text("%s", static_cast<std::string>(*instruction).c_str());
+                    else
+                        ImGui::Text("????");
 
-                if (current_instruction)
-                    ImGui::PopStyleColor();
+                    if (current_instruction)
+                        ImGui::PopStyleColor();
+                }
             }
             ImGui::EndTable();
         }
