@@ -39,12 +39,20 @@ void main_menu(const sf::RenderWindow &window, const std::shared_ptr<Chip8> chip
             debugger = std::make_shared<Debugger>();
     }
 
+    // If the debugger is enabled, ask the user if they'd like to break on start
+    static bool break_next = false;
+    if (debugger)
+    {
+        ImGui::SameLine();
+        ImGui::Checkbox("Break on Start", &break_next);
+    }
+
     // Load the program and start the CPU
     if (ImGui::Button("Go"))
     {
         chip8->load_program(selected_program);
         if (debugger)
-            chip8->attach_debugger(debugger);
+            chip8->attach_debugger(debugger, break_next);
         clock_thread = create_clock_thread(window, chip8);
     }
 

@@ -126,10 +126,10 @@ public:
         pixel_texture = pixel_render.getTexture();
     }
 
-    void attach_debugger(std::shared_ptr<Debugger> &debugger)
+    void attach_debugger(std::shared_ptr<Debugger> &debugger, bool break_next)
     {
         this->debugger = debugger;
-        debugger->attach(memory, registers);
+        debugger->attach(memory, registers, break_next);
     }
 
     void load_program(Program *program)

@@ -1,9 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <iomanip>
-#include <iostream>
 #include <optional>
 #include <sstream>
+#include <unordered_set>
 
 #include <imgui.h>
 #include <imgui_memory_editor/imgui_memory_editor.h>
@@ -19,7 +20,19 @@ private:
 
     MemoryEditor memory_editor;
 
+    // Set of addresses with breakpoints
+    std::unordered_set<addr_t> breakpoints{};
+
+    // If set when a clock starts, a breakpoint will be triggered
+    bool break_next = false;
+
+    // The register currently being edited, nullptr if none are being edited
     void *editing_reg;
+
+    // These are used to handle pausing program execution for breakpoints
+    std::mutex break_mtx;
+    std::condition_variable break_cv;
+    bool broken;
 
     template <uint8_t Digits>
     constexpr const std::string get_register_format() const
@@ -397,15 +410,32 @@ private:
 
     void draw_disassembly()
     {
-        if (ImGui::BeginTable("disassembly", 2, ImGuiTableFlags_ScrollY, ImVec2(0, 300)))
+        if (ImGui::BeginTable("disassembly", 3, ImGuiTableFlags_ScrollY, ImVec2(0, 300)))
         {
             ImGuiListClipper clipper;
             clipper.Begin(memory->size() / 2);
             while (clipper.Step())
             {
-                for (uint16_t addr = clipper.DisplayStart * 2; addr < clipper.DisplayEnd * 2; addr += 2)
+                for (addr_t addr = clipper.DisplayStart * 2; addr < clipper.DisplayEnd * 2; addr += 2)
                 {
                     std::optional<Instruction> instruction = disassemble_instruction((*memory)[addr] << 8 | (*memory)[addr + 1]);
+
+                    ImGui::TableNextColumn();
+
+                    bool breakpoint = breakpoints.count(addr);
+                    if (breakpoint)
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.27, 0, 1));
+
+                    ImGui::Bullet();
+
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsItemHovered())
+                        if (!breakpoint)
+                            breakpoints.insert(addr);
+                        else
+                            breakpoints.erase(addr);
+
+                    if (breakpoint)
+                        ImGui::PopStyleColor();
 
                     bool current_instruction = registers->pc_reg == addr;
                     if (current_instruction)
@@ -428,15 +458,50 @@ private:
         }
     }
 
+    // Handle drawing buttons for debugging operations, like step instruction, continue, etc.
+    void draw_operations()
+    {
+        if (ImGui::Button("Continue"))
+            continue_exec();
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Step Instruction"))
+            step_instruction();
+    }
+
+    void continue_exec()
+    {
+        break_cv.notify_all();
+    }
+
+    void step_instruction()
+    {
+        break_next = true;
+        continue_exec();
+    }
+
 public:
-    void attach(std::shared_ptr<std::array<byte, 0x1000>> memory, std::shared_ptr<Registers> registers)
+    void attach(std::shared_ptr<std::array<byte, 0x1000>> memory, std::shared_ptr<Registers> registers, bool break_next)
     {
         this->memory = memory;
         this->registers = registers;
+        this->break_next = break_next;
     }
 
     void on_clock()
     {
+        if (break_next || breakpoints.count(registers->pc_reg))
+        {
+            broken = true;
+
+            break_next = false;
+
+            std::unique_lock<std::mutex> lock(break_mtx);
+            break_cv.wait(lock);
+        }
+
+        broken = false;
     }
 
     void draw_debugger()
@@ -447,7 +512,10 @@ public:
             draw_registers();
 
         if (ImGui::CollapsingHeader("Disassembler", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            draw_operations();
             draw_disassembly();
+        }
 
         if (ImGui::CollapsingHeader("Memory", ImGuiTreeNodeFlags_DefaultOpen))
             memory_editor.DrawContents(memory.get(), memory->size());
