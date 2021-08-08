@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <cassert>
 #include <SFML/Graphics.hpp>
 
 #include "./Key.hpp"
@@ -22,7 +21,7 @@ public:
 
     Keypad() : font(std::make_shared<sf::Font>())
     {
-        assert(font->loadFromFile("../fonts/PressStart2P-vaV7.ttf"));
+        font->loadFromFile("../fonts/PressStart2P-vaV7.ttf");
 
         // Create all the keys
         for (int idx = 0; idx < KEY_DRAW_ORDER.size(); idx++)

@@ -5,7 +5,7 @@
 #include "./threads/clock.hpp"
 #include "./Programs.hpp"
 
-void main_menu(const sf::RenderWindow &window, const std::shared_ptr<Chip8> chip8, std::unique_ptr<std::thread> &clock_thread, std::shared_ptr<Debugger> &debugger)
+void main_menu(const sf::RenderWindow &window, const std::shared_ptr<Chip8> &chip8, std::unique_ptr<std::thread> &clock_thread, std::shared_ptr<Debugger> &debugger)
 {
     static Programs programs("../prog_list.txt");
     static Program *selected_program = &programs.programs[0];

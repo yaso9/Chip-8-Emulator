@@ -6,7 +6,7 @@
 #include "../Keypad.hpp"
 #include "../main_menu.hpp"
 
-std::unique_ptr<std::thread> create_window_thread(sf::RenderWindow &window, const std::shared_ptr<Keypad> keypad, const std::shared_ptr<Chip8> chip8, std::unique_ptr<std::thread> &clock_thread, std::shared_ptr<Debugger> &debugger)
+std::unique_ptr<std::thread> create_window_thread(sf::RenderWindow &window, const std::shared_ptr<Keypad> &keypad, const std::shared_ptr<Chip8> &chip8, std::unique_ptr<std::thread> &clock_thread, std::shared_ptr<Debugger> &debugger)
 {
     // Create a thread to handle drawing the window and handling events
     window.setActive(false);
