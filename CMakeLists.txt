@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.0.0)
-project(Chip-8-Emulator VERSION 0.1.0)
+set(CMAKE_CXX_STANDARD 17)
+project(Chip-8-Emulator VERSION 1.0)
 
 add_executable(Chip-8-Emulator ./src/main.cpp)
 
@@ -8,6 +9,7 @@ include(FetchContent)
 set(SFML_VERSION 2.5.1)
 set(IMGUI_VERSION 1.82)
 set(IMGUI_SFML_VERSION 2.3)
+set(IMGUI_SFML_FIND_SFML CACHE BOOL OFF)
 
 FetchContent_Declare(
   SFML
